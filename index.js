@@ -6,8 +6,13 @@ var fs = require('fs');
 var through = require('through2');
 var glob = require('glob');
 
-module.exports = function() {
-
+module.exports = function(option) {
+    if(!option){
+        option = {};
+    }
+    option = Object.assign({
+      includePaths: []
+    }, option);
     var process = function(filename) {
         var replaceString = '';
 
@@ -39,30 +44,34 @@ module.exports = function() {
         
         // console.log(excludedFiles);
 
-        var directory = path.dirname(file.path);
+        var directories = option.includePaths.map(function(dir){
+            return path.resolve(require('process').cwd(), dir);
+        });
+        directories.push(path.dirname(file.path));
+
         var result;
 
         while((result = reg.exec(contents)) !== null) {
 
             var sub = result[0];
             var globName = result[1];
-
-            var files = glob.sync(path.join(directory, globName));
             var replaceString = '';
 
-            files.forEach(function(filename){
-                var shouldReplace = !excludedFiles.some(function(excludedFile){
-                  excludedFile = excludedFile.replace(/^\s*@import\s+/, '').replace(/^["']/g, '').replace(/["']\s*;?$/,'');
-                  var pathEndsWith = new RegExp(excludedFile + '$');
-                  return ~filename.replace(/\.(scss|sass)$/, '').search(pathEndsWith);
-                });
+            directories.forEach(function (dir) {
+                var files = glob.sync(path.join(dir, globName));
+                files.forEach(function (filename) {
+                    var shouldReplace = !excludedFiles.some(function (excludedFile) {
+                        excludedFile = excludedFile.replace(/^\s*@import\s+/, '').replace(/^["']/g, '').replace(/["']\s*;?$/, '');
+                        var pathEndsWith = new RegExp(excludedFile + '$');
+                        return ~filename.replace(/\.(scss|sass)$/, '').search(pathEndsWith);
+                    });
 
-                if(shouldReplace){
-                  replaceString += process(filename);
-                }
-                
-            });
-            contents = contents.replace(sub, replaceString);
+                    if (shouldReplace) {
+                        replaceString += process(filename);
+                    }
+              });
+          });
+          contents = contents.replace(sub, replaceString);
         }
 
         file.contents = new Buffer(contents);
